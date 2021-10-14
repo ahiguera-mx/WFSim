@@ -310,3 +310,13 @@ class S1(Pulse):
         return 1d array of photon timings
         """
         return Pulse.singlet_triplet_delays(size, config['s1_NR_singlet_fraction'], config, phase)
+
+    @staticmethod
+    def er_effective(size, config):
+        """
+        ER effective model from arxiv 1803.07935
+        :param size: 1d array of ints, number of photons
+        :param config: dict wfsim config
+        """
+
+        _config = 
