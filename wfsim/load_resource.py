@@ -96,8 +96,9 @@ class Resource:
                 'ele_ap_pdfs': 'x1t_se_afterpulse_delaytime.pkl.gz',
                 'noise_file': 'x1t_noise_170203_0850_00_small.npz',
                 'fdc_3d': 'XnT_3D_FDC_xyt_dummy_all_zeros_v0.1.json.gz',
-                'field_dependencies_map': '',
+                'field_dependencies_map': False,
                 's1_time_spline': 'XENONnT_s1_proponly_va43fa9b_wires_20200625.json.gz',
+                's1_effective_singlet_triplet': False,
              })
 
         elif config['detector'] == 'XENONnT_neutron_veto':
@@ -277,6 +278,11 @@ class Resource:
             if config.get('s1_time_spline', False):
                 self.s1_optical_propagation_spline = make_map(files['s1_time_spline'], fmt='json.gz',
                                                               method='RegularGridInterpolator')
+
+            # S1 photon timing effetive singlet triplet
+            if config.get('s1_effective_singlet_triplet', False):
+                self.s1_effective_singlet_triplet = make_map(files['s1_effective_singlet_triplet'],
+                                                             method='RegularGridInterpolator')
 
             # Electron After Pulses
             if config.get('enable_electron_afterpulses', False):

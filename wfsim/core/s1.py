@@ -47,7 +47,7 @@ class S1(Pulse):
             self.nestpy_calc = nestpy.NESTcalc(nestpy.DetectorExample_XENON10())
 
         # Check if user specified s1 model type exist
-        S1VALIDTYPE = ['', 'simple', 'custom', 'optical_propagation', 'nest']
+        S1VALIDTYPE = ['', 'simple', 'custom', 'optical_propagation', 'nest', 'effective']
         def s1_valid_type(s, c='+ ,'):
             if len(c) > 0:
                 for k in s.split(c[0]):  
@@ -88,7 +88,7 @@ class S1(Pulse):
                                                      s1_pattern_map=self.resource.s1_pattern_map)
 
         extra_targs = {}
-        if 'nest' in self.config['s1_model_type']:
+        if 'nest' in self.config['s1_model_type'] or 'effective' in self.config['s1_model_type']:
             extra_targs['n_photons_emitted'] = n_photons
             extra_targs['n_excitons'] = instruction['n_excitons']
             extra_targs['local_field'] = instruction['local_field']
@@ -194,7 +194,7 @@ class S1(Pulse):
             _photon_timings += np.random.exponential(config['s1_decay_time'], _n_hits_total).astype(np.int64)
             _photon_timings += np.random.normal(0, config['s1_decay_spread'], _n_hits_total).astype(np.int64)
 
-        if 'nest' in config['s1_model_type'] or 'custom' in config['s1_model_type']:
+        if 'nest' in config['s1_model_type'] or 'custom' in config['s1_model_type'] or 'effective' in config['s1_model_type']:
             # Pulse model depends on recoil type
             counts_start = 0
             for i, counts in enumerate(n_photon_hits):
@@ -214,6 +214,17 @@ class S1(Pulse):
                     except AttributeError:
                         raise AttributeError(f"Recoil type must be ER, NR, alpha or LED, "
                                              f"not {recoil_type}. Check nest ids")
+                
+                if 'effective' in config['s1_model_type']:
+                    scint_time = S1.effective_singlet_triplet(
+                        counts,
+                        local_field[i],
+                        e_dep[i],
+                        recoil_type[i],
+                        resource.s1_effective_singlet_triplet,)
+
+                    scint_time = np.clip(scint_time, 0, config.get('maximum_recombination_time', 10000))
+                    _photon_timings[counts_start: counts_start + counts] += np.array(scint_time[:counts], np.int64)
 
                 if 'nest' in config['s1_model_type']:
                     scint_time = nestpy_calc.GetPhotonTimes(
@@ -330,11 +341,23 @@ class S1(Pulse):
         return Pulse.singlet_triplet_delays(size, config['s1_NR_singlet_fraction'], config, phase)
 
     @staticmethod
-    def er_effective(size, config):
+    def effective_singlet_triplet(size, local_field, e_dep, nest_id, spline):
         """
-        ER effective model from arxiv 1803.07935
-        :param size: 1d array of ints, number of photons
-        :param config: dict wfsim config
+        Effective S1 scintillation model with data extracted from
+        arXiv:1803.07935v3
+        Interpolated in recoil energy and electric field, and extrapolate outside
+        ER: 0 - 50 V/cm, 0 - 70 keVee
+        NR: 10 - 50 V/cm, 0 - 15 keVee
         """
+        assert nest_id in NestId.NR or nest_id in NestId.ER, (f"Recoil type must be ER, NR "
+                                                              f"not {recoil_type}. Check nest ids")
+        prefix = 'nr' if nest_id in NestId.NR else 'er'
 
-        _config = 
+        t1 = spline((e_dep, local_field), map_name=f'{prefix}_tau_sin_eff')
+        t3 = spline((e_dep, local_field), map_name=f'{prefix}_tau_tri_eff')
+        singlet_ratio = spline((e_dep, local_field), map_name=f'{prefix}_fra_sin_eff')
+
+        delay = np.random.choice([t1, t3], size, replace=True,
+                                 p=[singlet_ratio, 1 - singlet_ratio])
+
+        return (np.random.exponential(1, size) * delay).astype(np.int64)
